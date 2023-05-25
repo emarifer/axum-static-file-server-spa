@@ -1,0 +1,17 @@
+[package]
+name = "axum-static-file-server-spa"
+authors = ["emarifer <https://portfolio-cv-pwa.netlify.app/>"]
+license = "MIT"
+repository = "https://github.com/emarifer/axum-static-file-server-spa"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum = "0.6.18"
+serde_json = "1.0.96"
+tokio = { version = "1.28.1", features = ["full"] }
+tower = "0.4.13"
+tower-http = { version = "0.4.0", features = ["cors", "fs", "trace"] } # includes the cors feature in case it is needed.
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

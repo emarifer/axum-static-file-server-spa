@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* global styles */
+@font-face {
+  font-family: "Kanit";
+  font-weight: normal;
+  src: url(./assets/fonts/Kanit-Regular.ttf) format("truetype");
+}
+
+@layer base {
+  body {
+    @apply bg-primary text-slate-50 p-5 font-kanit;
+  }
+}
