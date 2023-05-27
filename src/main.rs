@@ -1,8 +1,8 @@
 // #![allow(unused)] // For beginning only.
 
-// use std::convert::Infallible;
+use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+// use std::path::PathBuf;
 
 use axum::{
     body::{boxed, Body},
@@ -11,20 +11,21 @@ use axum::{
         // header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
         // HeaderValue,
         // Method,
-        Response,
+        // Response,
+        Request,
         StatusCode,
     },
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::get,
     Router,
 };
 // use http_body::{combinators::UnsyncBoxBody, Body as _};
 use serde_json::json;
-use tokio::fs;
+// use tokio::fs;
 use tower::ServiceExt;
 use tower_http::{
     // cors::CorsLayer, // use tower_http::cors::Any (include if necessary)
-    services::ServeDir,
+    services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -84,6 +85,32 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    let static_file_service = |req: Request<Body>| async {
+        let mut resp = match req.uri().to_string().as_str() {
+            s if s.ends_with("css") => ServeDir::new("frontend/dist/assets").oneshot(req).await,
+            s if s.ends_with("js") => ServeDir::new("frontend/dist/assets").oneshot(req).await,
+            s if s.ends_with("ttf") => ServeDir::new("frontend/dist/assets").oneshot(req).await,
+            s if s.ends_with("png") => ServeDir::new("frontend/dist/assets").oneshot(req).await,
+            _ => {
+                ServeFile::new("frontend/dist/index.html")
+                    .oneshot(req)
+                    .await
+            }
+        };
+
+        if resp.as_mut().unwrap().status() == 404 {
+            return Ok::<_, Infallible>(
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(boxed(Body::from("Something went wrong...\n")))
+                    .unwrap(),
+            );
+        }
+
+        // Ok::<_, Infallible>(resp.into_response().map(|body| BoxBody::new(body)))
+        Ok::<_, Infallible>(resp.into_response())
+    };
+
     // Set up of Cross-Origin Resource Sharing (CORS) to allow the server to
     // accept cross-origin requests from specified origins (e.g.: "http://localhost:3000").
     // let cors = CorsLayer::new()
@@ -101,44 +128,47 @@ async fn main() {
     // Example of static asset service based on:
     // https://robert.kra.hn/posts/2022-04-03_rust-web-wasm/
     // https://github.com/rksm/axum-yew-setup
+    // let app = Router::new()
+    //     .route("/api/healthchecker", get(health_checker_handler))
+    //     .nest_service("/assets", get_service(static_file_service))
+    //     .fallback_service(get(|req| async move {
+    //         match ServeDir::new("./frontend/dist").oneshot(req).await {
+    //             Ok(res) => {
+    //                 let status = res.status();
+    //                 match status {
+    //                     StatusCode::NOT_FOUND => {
+    //                         let index_path = PathBuf::from("frontend/dist").join("index.html");
+    //                         let index_content = match fs::read_to_string(index_path).await {
+    //                             Err(_) => {
+    //                                 return Response::builder()
+    //                                     .status(StatusCode::NOT_FOUND)
+    //                                     .body(boxed(Body::from("Something went wrong...")))
+    //                                     .unwrap()
+    //                             }
+    //                             Ok(index_content) => index_content,
+    //                         };
+
+    //                         Response::builder()
+    //                             .status(StatusCode::OK)
+    //                             .body(boxed(Body::from(index_content)))
+    //                             .unwrap()
+    //                     }
+    //                     _ => res.map(boxed),
+    //                 }
+    //             }
+    //             Err(err) => Response::builder()
+    //                 .status(StatusCode::INTERNAL_SERVER_ERROR)
+    //                 .body(boxed(Body::from(format!("error: {err}"))))
+    //                 .expect("error response"),
+    //         }
+    //     }))
+    //     // .layer(cors)
+    //     .layer(TraceLayer::new_for_http());
+
     let app = Router::new()
         .route("/api/healthchecker", get(health_checker_handler))
-        // .nest_service(
-        //     "/assets",
-        //     get_service(ServeDir::new("./frontend/dist/assets")),
-        // )
-        .fallback_service(get(|req| async move {
-            match ServeDir::new("./frontend/dist").oneshot(req).await {
-                Ok(res) => {
-                    let status = res.status();
-                    match status {
-                        StatusCode::NOT_FOUND => {
-                            let index_path = PathBuf::from("frontend/dist").join("index.html");
-                            let index_content = match fs::read_to_string(index_path).await {
-                                Err(_) => {
-                                    return Response::builder()
-                                        .status(StatusCode::NOT_FOUND)
-                                        .body(boxed(Body::from("Something went wrong...")))
-                                        .unwrap()
-                                }
-                                Ok(index_content) => index_content,
-                            };
-
-                            Response::builder()
-                                .status(StatusCode::OK)
-                                .body(boxed(Body::from(index_content)))
-                                .unwrap()
-                        }
-                        _ => res.map(boxed),
-                    }
-                }
-                Err(err) => Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(boxed(Body::from(format!("error: {err}"))))
-                    .expect("error response"),
-            }
-        }))
-        // .layer(cors)
+        .nest_service("/assets", get(static_file_service))
+        .fallback_service(get(static_file_service))
         .layer(TraceLayer::new_for_http());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
